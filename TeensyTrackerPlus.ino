@@ -24,7 +24,19 @@ void setupGPS() {
 }
 
 void setupSPIFlash() {
-  
+  unsigned char id_tab[32];
+  SPI.setMOSI(11);
+  SPI.setMISO(12);
+  SPI.setSCK(13);
+  flash_init();
+  flash_hard_reset();
+  Serial.print("Status = ");
+  Serial.println(flash_read_status(),HEX);
+  flash_read_id(id_tab);
+  for(int i = 0;i < 4;i++) {
+    Serial.printf("0x%X ", id_tab[i]);
+  }
+  Serial.println("\r\n");
 }
 
 void setupVEML6070() {
@@ -40,8 +52,10 @@ void setupVEML6070() {
 
 void aprsCallback() {
   String str = payload_string();
-  char* cstr = new char[sizeof(str)];
-  str.toCharArray(cstr, sizeof(cstr));
+  unsigned int len = str.length();
+  char* cstr = new char[len+1];
+  str.toCharArray(cstr, len+1);
+  
   // If above 5000 feet switch to a single hop path
   int nAddresses;
   if (data.gps_data.altitude > 1500) {
@@ -94,6 +108,8 @@ void aprsCallback() {
   Serial.println();
 
   // Send the packet
+  digitalWrite(3, HIGH);
+  delay(500);
   aprs_send(addresses, nAddresses,
       data.gps_data.day, data.gps_data.hour, data.gps_data.minute,
       data.gps_data.latitude, data.gps_data.longitude, // degrees
@@ -102,8 +118,9 @@ void aprsCallback() {
       data.gps_data.speed,
       SYMBOL_TABLE,
       SYMBOL_CHAR,
-      "HELLO"
+      cstr
   );
+  digitalWrite(3, LOW);
   //delete cstr;
 }
 
@@ -114,33 +131,23 @@ void captureCallback() {
   Serial.print("Captured LSM9DS1");
   data.gps_data = captureGPS();
   data.veml6070_data = veml6070->getUVdata();
-  //spiflash->writeBytes(data, length(data->lsm9ds1_data) + length(data.gps_data) + length(data.veml6070_data));
-
-  if(aprsCounter < aprsInterval) {
-    aprsCounter = aprsCounter + 1;
-  } else {
-    aprsCallback();
-    Serial.print("APRS sent");
-    aprsCounter = 0;
-  }
+  spiflash->writeBytes((unsigned char*)&data, sizeof(data.lsm9ds1_data) + sizeof(data.gps_data) + sizeof(data.veml6070_data));
   capturing = false;
 }
 
 GPS_data captureGPS() {
-  GPS_data gps_data = {0,0,0,0,0,0,0.0,0.0,0.0,0,0.0};
+  GPS_data gps_data = {1,1,1,1,1,1,1.0,1.0,1.0,1,1.0};
 
   if (gps.sentenceAvailable()) gps.parseSentence();
 
-  if (gps.newValuesSinceDataRead()) {
-    gps.dataRead();
+  gps.dataRead();
 
-    gps_data = (GPS_data){
-      gps.hour,gps.minute,gps.seconds,
-      gps.year,gps.month,gps.day,
-      gps.latitude,gps.latitude,gps.altitude,
-      gps.heading,gps.speed
-    };
-  }
+  gps_data = (GPS_data){
+    gps.hour,gps.minute,gps.seconds,
+    gps.year,gps.month,gps.day,
+    gps.latitude,gps.longitude,gps.altitude,
+    gps.heading,gps.speed
+  };
 
   return gps_data;
 }
@@ -163,20 +170,30 @@ uint16_t captureVEML6070() {
 }
 
 String payload_string() {
-  String str = "HELLO";
+  String str = "HELLOTHEREIAMETHAN";
   return str;
 }
 
 void setup() {
-  setupLSM9DS1();
+  pinMode(3, OUTPUT);
+  digitalWrite(3, LOW);
   setupGPS();
+  setupLSM9DS1();
   setupVEML6070();
+  delay(10000);
   setupSPIFlash();
   setupAPRS();
-  
-  captureTimer.begin(captureCallback, captureTimerInMicroseconds);
 }
 
+uint32_t timeOfAPRS = 0;
+
 void loop() {
+  if (timeOfAPRS + 1000 < millis()) {
+    captureCallback();
+  }
+  if (timeOfAPRS + 10000 < millis()) {
+    aprsCallback();
+    timeOfAPRS = millis();
+  }
 }
 

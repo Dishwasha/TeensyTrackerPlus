@@ -24,7 +24,7 @@ struct Data {
 };
 
 // Set your callsign and SSID here. Common values for the SSID are
-#define S_CALLSIGN      "W3CHAC"
+#define S_CALLSIGN      "W3HAC"
 #define S_CALLSIGN_ID   11   // 11 is usually for balloons
 // Destination callsign: APRS (with SSID=0) is usually okay.
 #define D_CALLSIGN      "APRS"
